@@ -1,0 +1,84 @@
+# Runs the whole project with one command:
+#
+#   docker compose up --build
+#
+#   website : http://localhost:3000
+#   strapi  : http://localhost:1337/admin
+#
+# Three services: Postgres (db) -> Strapi CMS (strapi) -> Next.js site (web).
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: heirloom-strapi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: strapi
+      POSTGRES_USER: strapi
+      POSTGRES_PASSWORD: strapi
+    volumes:
+      - strapi-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U strapi -d strapi"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  strapi:
+    build:
+      context: ./strapi/app
+    container_name: heirloom-strapi
+    restart: unless-stopped
+    environment:
+      DATABASE_CLIENT: postgres
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_NAME: strapi
+      DATABASE_USERNAME: strapi
+      DATABASE_PASSWORD: strapi
+      DATABASE_SSL: "false"
+      # Strapi secrets — baked in so the project runs with zero .env setup.
+      # These are local-development values; generate fresh ones for any
+      # real deployment.
+      APP_KEYS: "x8Q0Xaf9wLscR1o7FP12ig==,zKf4z1Y8CJ7wUnO/UDyA+g==,wgTsbWn6H57tZMdjiyJOKw==,mWeKMjvxr+I6KIxohMKUQQ=="
+      API_TOKEN_SALT: "pvT8v+2jbnyTKpg69ImOtw=="
+      ADMIN_JWT_SECRET: "4rBNs2VJ5YqFleBF42Tolg=="
+      TRANSFER_TOKEN_SALT: "1rUXJ61nLxmZwWzob8Y/tw=="
+      ENCRYPTION_KEY: "Hn5vpZxMOd+dNX6TGqCATQ=="
+    volumes:
+      # Bind-mount the source so content types created in the admin UI persist.
+      - ./strapi/app:/opt/app
+      - /opt/app/node_modules
+    ports:
+      - "1337:1337"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+    container_name: heirloom-web
+    restart: unless-stopped
+    environment:
+      # Inside the compose network Strapi is reachable as `strapi`, not
+      # localhost. This overrides STRAPI_URL from any mounted .env file.
+      STRAPI_URL: http://strapi:1337
+      # Force-empty so the stale token in .env isn't sent — content is read
+      # via the Public role, so no API token is needed. A bad token would
+      # make Strapi return 401 and the site silently fall back to mock data.
+      STRAPI_TOKEN: ""
+      # Public Shopware sales-channel credentials — same NEXT_PUBLIC_ values
+      # the browser uses, safe to commit.
+      NEXT_PUBLIC_SHOPWARE_URL: https://sandbox70844400c7ad4a2ce7c5f7307a27b1c1.shopware.store
+      NEXT_PUBLIC_SHOPWARE_ACCESS_KEY: SWSCZML2WTJIC2L3DDHZETFWRW
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      - strapi
+
+volumes:
+  strapi-db:

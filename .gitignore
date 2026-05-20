@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Environment — keep secrets out of git. Commit .env.example instead.
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment
+.vercel/
+
+# Strapi (when created locally via `npx create-strapi-app strapi-cms`).
+# Strapi ships its own .gitignore inside that folder, so this is just
+# belt-and-braces in case it gets initialized differently.
+strapi-cms/node_modules/
+strapi-cms/.cache/
+strapi-cms/build/
+strapi-cms/.tmp/

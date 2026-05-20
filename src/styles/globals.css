@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply text-brand-900 bg-brand-50;
+  }
+  body {
+    @apply min-h-screen antialiased;
+  }
+  a {
+    @apply transition-colors;
+  }
+}
