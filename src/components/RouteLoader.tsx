@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
+import Spinner from "./Spinner";
 
 // A circular loading screen shown during route transitions. Every page fetches
 // from Shopware/Strapi in getServerSideProps, so navigations can take a moment
@@ -49,11 +50,7 @@ export default function RouteLoader() {
         transition: "opacity 300ms ease",
       }}
     >
-      {/* Dual-ring circular spinner */}
-      <div className="relative h-16 w-16">
-        <div className="absolute inset-0 rounded-full border-4 border-brand-100" />
-        <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-brand-700 border-r-brand-500" />
-      </div>
+      <Spinner size={64} />
       <p className="font-display text-sm tracking-[0.15em] uppercase text-brand-700">
         Loading
       </p>

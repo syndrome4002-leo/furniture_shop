@@ -1,6 +1,8 @@
+import { useState } from "react";
 import type { GetServerSideProps } from "next";
 import Link from "next/link";
 import Layout from "@/components/Layout";
+import Spinner from "@/components/Spinner";
 import { useCart } from "@/lib/cart";
 import { formatPrice } from "@/lib/format";
 import { shopwareCheckoutUrl } from "@/lib/shopware";
@@ -12,6 +14,19 @@ interface Props {
 
 export default function CartPage({ site }: Props) {
   const { cart, loading, removeFromCart } = useCart();
+
+  // Tracks which line item is currently being removed, so we can show a
+  // spinner on that row and disable the buttons while the request is in flight.
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const handleRemove = async (lineItemId: string) => {
+    setRemovingId(lineItemId);
+    try {
+      await removeFromCart(lineItemId);
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   const items = cart?.lineItems ?? [];
   const total = cart?.price?.totalPrice ?? 0;
@@ -56,10 +71,18 @@ export default function CartPage({ site }: Props) {
                 </div>
                 <button
                   type="button"
-                  className="text-sm text-brand-500 hover:text-brand-900"
-                  onClick={() => void removeFromCart(li.id)}
+                  disabled={removingId !== null}
+                  className="inline-flex items-center gap-2 text-sm text-brand-500 hover:text-brand-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void handleRemove(li.id)}
                 >
-                  Remove
+                  {removingId === li.id ? (
+                    <>
+                      <Spinner size={14} />
+                      Removing…
+                    </>
+                  ) : (
+                    "Remove"
+                  )}
                 </button>
               </li>
             ))}

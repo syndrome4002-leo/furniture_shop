@@ -1,17 +1,84 @@
+import { useEffect, useState } from "react";
 import type { GetServerSideProps } from "next";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import AddToCartButton from "@/components/AddToCartButton";
+import Spinner from "@/components/Spinner";
 import { fetchProductByNumber, type ShopwareProduct } from "@/lib/shopware";
+import { findProductBySlug } from "@/lib/productCache";
 import { getSiteContent, type SiteContent } from "@/lib/strapi";
 import { formatPrice } from "@/lib/format";
 
 interface Props {
   site: SiteContent;
-  product: ShopwareProduct;
+  slug: string;
 }
 
-export default function ProductDetailPage({ site, product }: Props) {
+type ProductState =
+  | { status: "loading" }
+  | { status: "found"; product: ShopwareProduct }
+  | { status: "notfound" };
+
+export default function ProductDetailPage({ site, slug }: Props) {
+  const [state, setState] = useState<ProductState>({ status: "loading" });
+
+  useEffect(() => {
+    setState({ status: "loading" });
+
+    // Preferred path: pull the product straight out of the cached catalogue.
+    const cached = findProductBySlug(slug);
+    if (cached) {
+      setState({ status: "found", product: cached });
+      return;
+    }
+
+    // Fallback: cache miss (direct landing / expired cache) — fetch this one
+    // product from Shopware. Slugs are the lowercased productNumber.
+    let cancelled = false;
+    fetchProductByNumber(slug.toUpperCase())
+      .then((product) => {
+        if (cancelled) return;
+        setState(
+          product
+            ? { status: "found", product }
+            : { status: "notfound" },
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setState({ status: "notfound" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
+  if (state.status === "loading") {
+    return (
+      <Layout site={site} title="Loading">
+        <div className="flex flex-col items-center justify-center gap-5 py-32">
+          <Spinner size={56} />
+          <p className="font-display text-sm uppercase tracking-[0.15em] text-brand-700">
+            Loading
+          </p>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (state.status === "notfound") {
+    return (
+      <Layout site={site} title="Not found">
+        <div className="py-24 text-center text-brand-700">
+          <p className="mb-4">Sorry, we couldn&apos;t find that product.</p>
+          <Link href="/products/" className="underline hover:text-brand-500">
+            Back to all products
+          </Link>
+        </div>
+      </Layout>
+    );
+  }
+
+  const product = state.product;
   return (
     <Layout
       site={site}
@@ -74,13 +141,9 @@ export default function ProductDetailPage({ site, product }: Props) {
 }
 
 export const getServerSideProps: GetServerSideProps<Props> = async ({ params }) => {
+  // The product itself comes from the localStorage cache on the client; only
+  // the site content (nav/footer) and the slug are needed server-side.
   const slug = params?.slug as string;
-  // We stored slugs as lowercased productNumber, so reverse to query Shopware.
-  const productNumber = slug.toUpperCase();
-  const [site, product] = await Promise.all([
-    getSiteContent(),
-    fetchProductByNumber(productNumber),
-  ]);
-  if (!product) return { notFound: true };
-  return { props: { site, product } };
+  const site = await getSiteContent();
+  return { props: { site, slug } };
 };

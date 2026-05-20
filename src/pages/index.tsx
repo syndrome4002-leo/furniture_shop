@@ -1,9 +1,15 @@
+import { useEffect } from "react";
 import type { GetServerSideProps } from "next";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import ProductCard from "@/components/ProductCard";
 import { fetchProducts, type ShopwareProduct } from "@/lib/shopware";
+import { saveProducts } from "@/lib/productCache";
 import { getSiteContent, type SiteContent } from "@/lib/strapi";
+
+// Number of products shown in the "Featured pieces" grid. The full catalogue
+// is still fetched and cached so other pages don't have to call Shopware.
+const FEATURED_COUNT = 6;
 
 interface Props {
   site: SiteContent;
@@ -12,6 +18,14 @@ interface Props {
 
 export default function HomePage({ site, products }: Props) {
   const hero = site.hero;
+
+  // The homepage is the single place that fetches the catalogue from Shopware.
+  // Cache it in localStorage so /products and /products/[slug] can reuse it.
+  useEffect(() => {
+    saveProducts(products);
+  }, [products]);
+
+  const featured = products.slice(0, FEATURED_COUNT);
   return (
     <Layout site={site} description={hero.subtitle}>
       <section className="rounded-2xl bg-brand-100 px-8 py-16 md:px-16 md:py-24 mb-16 relative overflow-hidden">
@@ -48,7 +62,7 @@ export default function HomePage({ site, products }: Props) {
           </Link>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {products.map((p) => (
+          {featured.map((p) => (
             <ProductCard key={p.id} product={p} />
           ))}
         </div>
@@ -58,9 +72,11 @@ export default function HomePage({ site, products }: Props) {
 }
 
 export const getServerSideProps: GetServerSideProps<Props> = async () => {
+  // Fetch the whole catalogue (not just the featured 6) so the client can
+  // cache it for the other pages.
   const [site, products] = await Promise.all([
     getSiteContent(),
-    fetchProducts(6),
+    fetchProducts(100),
   ]);
   return { props: { site, products } };
 };
