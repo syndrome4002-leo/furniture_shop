@@ -1,87 +1,51 @@
-import { useEffect, useState } from "react";
-import type { GetServerSideProps } from "next";
+import { useRouter } from "next/router";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import AddToCartButton from "@/components/AddToCartButton";
-import Spinner from "@/components/Spinner";
-import { fetchProductByNumber, type ShopwareProduct } from "@/lib/shopware";
-import { findProductBySlug } from "@/lib/productCache";
-import { getSiteContent, type SiteContent } from "@/lib/strapi";
+import LoadingScreen from "@/components/LoadingScreen";
+import ErrorScreen from "@/components/ErrorScreen";
+import { useCachedData } from "@/lib/useCachedData";
+import { fetchCatalog, fetchSiteContent } from "@/lib/api";
 import { formatPrice } from "@/lib/format";
 
-interface Props {
-  site: SiteContent;
-  slug: string;
-}
+export default function ProductDetailPage() {
+  const router = useRouter();
 
-type ProductState =
-  | { status: "loading" }
-  | { status: "found"; product: ShopwareProduct }
-  | { status: "notfound" };
+  // The detail page reads from the same cached catalogue as the listing pages,
+  // so arriving here from the homepage or products list is instant — the
+  // product is already in localStorage. A direct (cold) visit fetches the
+  // catalogue once behind the loading screen.
+  const site = useCachedData("site", fetchSiteContent);
+  const catalog = useCachedData("products", fetchCatalog);
 
-export default function ProductDetailPage({ site, slug }: Props) {
-  const [state, setState] = useState<ProductState>({ status: "loading" });
+  const slug =
+    typeof router.query.slug === "string" ? router.query.slug : undefined;
 
-  useEffect(() => {
-    setState({ status: "loading" });
-
-    // Preferred path: pull the product straight out of the cached catalogue.
-    const cached = findProductBySlug(slug);
-    if (cached) {
-      setState({ status: "found", product: cached });
-      return;
-    }
-
-    // Fallback: cache miss (direct landing / expired cache) — fetch this one
-    // product from Shopware. Slugs are the lowercased productNumber.
-    let cancelled = false;
-    fetchProductByNumber(slug.toUpperCase())
-      .then((product) => {
-        if (cancelled) return;
-        setState(
-          product
-            ? { status: "found", product }
-            : { status: "notfound" },
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setState({ status: "notfound" });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
-
-  if (state.status === "loading") {
-    return (
-      <Layout site={site} title="Loading">
-        <div className="flex flex-col items-center justify-center gap-5 py-32">
-          <Spinner size={56} />
-          <p className="font-display text-sm uppercase tracking-[0.15em] text-brand-700">
-            Loading
-          </p>
-        </div>
-      </Layout>
-    );
+  // Cold cache, or the route params not parsed yet — show the loading screen.
+  if (!site.data || !catalog.data || (!slug && !router.isReady)) {
+    const error = site.error ?? catalog.error;
+    if (error) return <ErrorScreen message={error.message} />;
+    return <LoadingScreen />;
   }
 
-  if (state.status === "notfound") {
+  const product = catalog.data.find((p) => p.slug === slug);
+
+  if (!product) {
     return (
-      <Layout site={site} title="Not found">
-        <div className="py-24 text-center text-brand-700">
-          <p className="mb-4">Sorry, we couldn&apos;t find that product.</p>
-          <Link href="/products/" className="underline hover:text-brand-500">
-            Back to all products
+      <Layout site={site.data} title="Not found">
+        <div className="min-h-[40vh] flex flex-col items-center justify-center gap-4 text-center">
+          <h1 className="font-display text-2xl">Product not found</h1>
+          <Link href="/products/" className="text-brand-700 hover:text-brand-500">
+            ← Back to all products
           </Link>
         </div>
       </Layout>
     );
   }
 
-  const product = state.product;
   return (
     <Layout
-      site={site}
+      site={site.data}
       title={product.name}
       description={product.description ?? undefined}
     >
@@ -139,11 +103,3 @@ export default function ProductDetailPage({ site, slug }: Props) {
     </Layout>
   );
 }
-
-export const getServerSideProps: GetServerSideProps<Props> = async ({ params }) => {
-  // The product itself comes from the localStorage cache on the client; only
-  // the site content (nav/footer) and the slug are needed server-side.
-  const slug = params?.slug as string;
-  const site = await getSiteContent();
-  return { props: { site, slug } };
-};

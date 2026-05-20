@@ -1,18 +1,19 @@
 import { useState } from "react";
-import type { GetServerSideProps } from "next";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import Spinner from "@/components/Spinner";
+import LoadingScreen from "@/components/LoadingScreen";
+import ErrorScreen from "@/components/ErrorScreen";
 import { useCart } from "@/lib/cart";
+import { useCachedData } from "@/lib/useCachedData";
+import { fetchSiteContent } from "@/lib/api";
 import { formatPrice } from "@/lib/format";
 import { shopwareCheckoutUrl } from "@/lib/shopware";
-import { getSiteContent, type SiteContent } from "@/lib/strapi";
 
-interface Props {
-  site: SiteContent;
-}
-
-export default function CartPage({ site }: Props) {
+export default function CartPage() {
+  // Site content (header/footer) follows the same cache-first flow as every
+  // other page; the cart itself is hydrated client-side by useCart.
+  const site = useCachedData("site", fetchSiteContent);
   const { cart, loading, removeFromCart } = useCart();
 
   // Tracks which line item is currently being removed, so we can show a
@@ -28,11 +29,17 @@ export default function CartPage({ site }: Props) {
     }
   };
 
+  // Cold cache only — show the loading screen while site content first loads.
+  if (!site.data) {
+    if (site.error) return <ErrorScreen message={site.error.message} />;
+    return <LoadingScreen />;
+  }
+
   const items = cart?.lineItems ?? [];
   const total = cart?.price?.totalPrice ?? 0;
 
   return (
-    <Layout site={site} title="Cart">
+    <Layout site={site.data} title="Cart">
       <h1 className="font-display text-3xl mb-8">Your cart</h1>
 
       {loading && !cart ? (
@@ -109,8 +116,3 @@ export default function CartPage({ site }: Props) {
     </Layout>
   );
 }
-
-export const getServerSideProps: GetServerSideProps<Props> = async () => {
-  const site = await getSiteContent();
-  return { props: { site } };
-};

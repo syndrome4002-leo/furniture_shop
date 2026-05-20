@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import Spinner from "./Spinner";
 
-// A circular loading screen shown during route transitions. Every page fetches
-// from Shopware/Strapi in getServerSideProps, so navigations can take a moment
-// — this overlay gives the user immediate feedback instead of a frozen page.
+// A circular loading screen shown during route transitions. Pages render from
+// the localStorage cache instantly, so this overlay only ever appears for the
+// brief moment a not-yet-loaded route's JS chunk is fetched — the 120ms delay
+// below keeps it from flashing on the common instant navigation.
 export default function RouteLoader() {
   const router = useRouter();
   const [visible, setVisible] = useState(false);

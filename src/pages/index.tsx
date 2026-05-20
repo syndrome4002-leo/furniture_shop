@@ -1,33 +1,34 @@
-import { useEffect } from "react";
-import type { GetServerSideProps } from "next";
 import Link from "next/link";
 import Layout from "@/components/Layout";
 import ProductCard from "@/components/ProductCard";
-import { fetchProducts, type ShopwareProduct } from "@/lib/shopware";
-import { saveProducts } from "@/lib/productCache";
-import { getSiteContent, type SiteContent } from "@/lib/strapi";
+import LoadingScreen from "@/components/LoadingScreen";
+import ErrorScreen from "@/components/ErrorScreen";
+import { useCachedData } from "@/lib/useCachedData";
+import { fetchCatalog, fetchSiteContent } from "@/lib/api";
 
-// Number of products shown in the "Featured pieces" grid. The full catalogue
-// is still fetched and cached so other pages don't have to call Shopware.
+// Number of products shown in the "Featured pieces" grid.
 const FEATURED_COUNT = 6;
 
-interface Props {
-  site: SiteContent;
-  products: ShopwareProduct[];
-}
+export default function HomePage() {
+  // Both data sources follow the same stale-while-revalidate flow: a warm
+  // localStorage cache renders the page instantly, while a background fetch
+  // revalidates and updates the UI only if Shopware/Strapi changed.
+  const site = useCachedData("site", fetchSiteContent);
+  const catalog = useCachedData("products", fetchCatalog);
 
-export default function HomePage({ site, products }: Props) {
-  const hero = site.hero;
+  // Cold cache: nothing to show yet, so a loading screen covers the first
+  // fetch. Once cached, this branch is skipped entirely on later visits.
+  if (!site.data || !catalog.data) {
+    const error = site.error ?? catalog.error;
+    if (error) return <ErrorScreen message={error.message} />;
+    return <LoadingScreen />;
+  }
 
-  // The homepage is the single place that fetches the catalogue from Shopware.
-  // Cache it in localStorage so /products and /products/[slug] can reuse it.
-  useEffect(() => {
-    saveProducts(products);
-  }, [products]);
+  const hero = site.data.hero;
+  const products = catalog.data.slice(0, FEATURED_COUNT);
 
-  const featured = products.slice(0, FEATURED_COUNT);
   return (
-    <Layout site={site} description={hero.subtitle}>
+    <Layout site={site.data} description={hero.subtitle}>
       <section className="rounded-2xl bg-brand-100 px-8 py-16 md:px-16 md:py-24 mb-16 relative overflow-hidden">
         {hero.backgroundImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -62,7 +63,7 @@ export default function HomePage({ site, products }: Props) {
           </Link>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {featured.map((p) => (
+          {products.map((p) => (
             <ProductCard key={p.id} product={p} />
           ))}
         </div>
@@ -70,13 +71,3 @@ export default function HomePage({ site, products }: Props) {
     </Layout>
   );
 }
-
-export const getServerSideProps: GetServerSideProps<Props> = async () => {
-  // Fetch the whole catalogue (not just the featured 6) so the client can
-  // cache it for the other pages.
-  const [site, products] = await Promise.all([
-    getSiteContent(),
-    fetchProducts(100),
-  ]);
-  return { props: { site, products } };
-};
